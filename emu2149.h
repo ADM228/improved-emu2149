@@ -14,11 +14,13 @@ extern "C"
   typedef struct __PSG
   {
 
-    /* Volume Table */
-    uint32_t *voltbl;
+    // /* temp shite */
+    // char debug [32];
+    /* Volume Tables */
+    const double *voltbl;
 
     uint8_t reg[0x20];
-    int32_t out;
+    double out;
 
     uint32_t clk, rate, base_incr;
     uint8_t quality;
@@ -46,7 +48,7 @@ extern "C"
     uint16_t env_freq;
     uint32_t env_count;
 
-    uint32_t noise_seed;
+    uint32_t noise_lfsr;
     uint8_t noise_scaler;
     uint8_t noise_count;
     uint8_t noise_freq;
@@ -62,7 +64,7 @@ extern "C"
     uint8_t adr;
 
     /* output of channels */
-    int16_t ch_out[3];
+    double ch_out[3];
 
   } PSG;
 
@@ -77,7 +79,7 @@ extern "C"
   void PSG_writeIO (PSG * psg, uint32_t adr, uint32_t val);
   uint8_t PSG_readReg (PSG * psg, uint32_t reg);
   uint8_t PSG_readIO (PSG * psg);
-  int16_t PSG_calc (PSG *);
+  double PSG_calc (PSG *);
   void PSG_setVolumeMode (PSG * psg, int type);
   uint32_t PSG_setMask (PSG *, uint32_t mask);
   uint32_t PSG_toggleMask (PSG *, uint32_t mask);

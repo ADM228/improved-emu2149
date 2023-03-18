@@ -1,8 +1,9 @@
-/**
+/*
  * emu2149 v1.41
  * https://github.com/digital-sound-antiques/emu2149
  * Copyright (C) 2001-2022 Mitsutaka Okazaki
  *
+ * Improvements done in 2023 by alexmush
  * This source refers to the following documents. The author would like to thank all the authors who have
  * contributed to the writing of them.
  * - psg.vhd        -- 2000 written by Kazuhiro Tsujikawa.
@@ -10,22 +11,26 @@
  * - ay8910.c       -- 1998-2001 Author unknown (MAME).
  * - MSX-Datapack   -- 1991 ASCII Corp.
  * - AY-3-8910 data sheet
+ * 
+ * alexmush also referred to:
+ * - YM2149 data sheet
+ * - 2 real YM2149 chips
  */
 #include <stdlib.h>
 #include <string.h>
 #include "emu2149.h"
+#include "volumetables.h"
 
-static uint32_t voltbl[2][32] = {
-  /* YM2149 - 32 steps */
-  {0x00, 0x01, 0x01, 0x02, 0x02, 0x03, 0x03, 0x04, 0x05, 0x06, 0x07, 0x09,
-   0x0B, 0x0D, 0x0F, 0x12,
-   0x16, 0x1A, 0x1F, 0x25, 0x2D, 0x35, 0x3F, 0x4C, 0x5A, 0x6A, 0x7F, 0x97,
-   0xB4, 0xD6, 0xFF, 0xFF},
-  /* AY-3-8910 - 16 steps */
-  {0x00, 0x00, 0x03, 0x03, 0x04, 0x04, 0x06, 0x06, 0x09, 0x09, 0x0D, 0x0D,
-   0x12, 0x12, 0x1D, 0x1D,
-   0x22, 0x22, 0x37, 0x37, 0x4D, 0x4D, 0x62, 0x62, 0x82, 0x82, 0xA6, 0xA6,
-   0xD0, 0xD0, 0xFF, 0xFF}
+
+enum ChipTypes {
+  YM2149_AYUMI = 0,
+  YM2149_ZXTUNE = 1,
+  // YM2149_MAME = 2,
+  YM2149_PERFECT = 2,
+  AY8910_AYUMI = 3,
+  AY8910_ZXTUNE = 4,
+  // AY8910_MAME = 6,
+  VOLUME_TABLE_LAST = 4
 };
 
 static const uint8_t regmsk[16] = {
@@ -117,18 +122,10 @@ PSG_new (uint32_t clock, uint32_t rate)
 void
 PSG_setVolumeMode (PSG * psg, int type)
 {
-  switch (type)
-  {
-  case 1:
-    psg->voltbl = voltbl[0]; /* YM2149 */
-    break;
-  case 2:
-    psg->voltbl = voltbl[1]; /* AY-3-8910 */
-    break;
-  default:
-    psg->voltbl = voltbl[0]; /* fallback: YM2149 */
-    break;
-  }
+  if (type > VOLUME_TABLE_LAST)
+    psg->voltbl = voltbl[0];
+  else
+    psg->voltbl = voltbl[type];
 }
 
 uint32_t
@@ -177,7 +174,8 @@ PSG_reset (PSG * psg)
     psg->reg[i] = 0;
   psg->adr = 0;
 
-  psg->noise_seed = 0xffff;
+
+  psg->noise_lfsr = 1;
   psg->noise_scaler = 0;
   psg->noise_count = 0;
   psg->noise_freq = 0;
@@ -262,7 +260,6 @@ update_output (PSG * psg)
     else
       psg->env_count = 0;
   }
-
   /* Noise */
   psg->noise_count += incr;
   if (psg->noise_count >= psg->noise_freq)
@@ -270,18 +267,15 @@ update_output (PSG * psg)
     psg->noise_scaler ^= 1;
     if (psg->noise_scaler) 
     { 
-      if (psg->noise_seed & 1)
-        psg->noise_seed ^= 0x24000;
-      psg->noise_seed >>= 1;
+      psg->noise_lfsr = ((psg->noise_lfsr & 0x1FFFE) >> 1) | (((psg->noise_lfsr&1) ^ ((psg->noise_lfsr>>3)&1)) << 16);
     }
-    
+
     if (psg->noise_freq >= incr)
       psg->noise_count -= psg->noise_freq;
     else
       psg->noise_count = 0;
   }
-  noise = psg->noise_seed & 1;
-
+  noise = ~(psg->noise_lfsr) & 1;
   /* Tone */
   for (i = 0; i < 3; i++)
   {
@@ -296,14 +290,14 @@ update_output (PSG * psg)
         psg->count[i] = 0;
     }
 
-    if (0 < psg->freq_limit && psg->freq[i] <= psg->freq_limit) 
-    {
-      /* Mute the channel if the pitch is higher than the Nyquist frequency at the current sample rate, 
-       * to prevent aliased or broken tones from being generated. Of course, this logic doesn't exist 
-       * on the actual chip, but practically all tones higher than the Nyquist frequency are usually 
-       * removed by a low-pass circuit somewhere, so we here halt the output. */
-      continue;
-    }
+    // if (0 < psg->freq_limit && psg->freq[i] <= psg->freq_limit) 
+    // {
+    //   /* Mute the channel if the pitch is higher than the Nyquist frequency at the current sample rate, 
+    //    * to prevent aliased or broken tones from being generated. Of course, this logic doesn't exist 
+    //    * on the actual chip, but practically all tones higher than the Nyquist frequency are usually 
+    //    * removed by a low-pass circuit somewhere, so we here halt the output. */
+    //   continue;
+    // }
 
     if (psg->mask & PSG_MASK_CH(i)) 
     {
@@ -313,10 +307,10 @@ update_output (PSG * psg)
 
     if ((psg->tmask[i]||psg->edge[i]) && (psg->nmask[i]||noise))
     {
-      if (!(psg->volume[i] & 32)) 
-        psg->ch_out[i] = (psg->voltbl[psg->volume[i] & 31] << 4);
+      if (!(psg->volume[i] & 32))
+        psg->ch_out[i] = (psg->voltbl[(psg->volume[i] & 31) != 0 ? (psg->volume[i] & 31) + 1 : 0] / 4);
       else 
-        psg->ch_out[i] = (psg->voltbl[psg->env_ptr] << 4);
+        psg->ch_out[i] = (psg->voltbl[psg->env_ptr] / 4);
     }
     else 
     {
@@ -325,13 +319,13 @@ update_output (PSG * psg)
   }
 }
 
-static inline int16_t 
+static double 
 mix_output(PSG *psg) 
 {
-  return (int16_t)(psg->ch_out[0] + psg->ch_out[1] + psg->ch_out[2]);
+  return (double)(psg->ch_out[0] + psg->ch_out[1] + psg->ch_out[2]);
 }
 
-int16_t
+double
 PSG_calc (PSG * psg)
 {
   if (!psg->quality) 
@@ -339,18 +333,18 @@ PSG_calc (PSG * psg)
     update_output(psg);
     psg->out = mix_output(psg);
   }
-  else
-  {
-    /* Simple rate converter (See README for detail). */
-    while (psg->realstep > psg->psgtime)
-    {
-      psg->psgtime += psg->psgstep;
-      update_output(psg);
-      psg->out += mix_output(psg);
-      psg->out >>= 1;
-    }
-    psg->psgtime -= psg->realstep;
-  }
+  // else
+  // {
+  //   /* Simple rate converter (See README for detail). */
+  //   while (psg->realstep > psg->psgtime)
+  //   {
+  //     psg->psgtime += psg->psgstep;
+  //     update_output(psg);
+  //     psg->out += mix_output(psg);
+  //     psg->out >>= 1;
+  //   }
+  //   psg->psgtime -= psg->realstep;
+  // }
   return psg->out;
 }
 

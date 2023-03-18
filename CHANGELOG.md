@@ -1,3 +1,7 @@
+## 2023-03-19 :
+- Now noise emulation is from MAME, confirmed to be completely compatible with real YM2149 and YM6630 hardware.
+- Volume tables are now available in several different flavors - from ZXTune, AYumi or perfectly logarithmic (the original was abolished due to being the worst ever), so envelope emulation is now also accurate (and not with peaks 2x thicker than they should be), also they are now doubles instead of bytes.
+
 ## 2022-11-26 : v1.41
 - Fix a problem with DC offset when muting a channel (issue #4).
 - Disable frequency limiter if the internal rate converter is not active (i.e. quality == 0).
