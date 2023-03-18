@@ -333,18 +333,18 @@ PSG_calc (PSG * psg)
     update_output(psg);
     psg->out = mix_output(psg);
   }
-  // else
-  // {
-  //   /* Simple rate converter (See README for detail). */
-  //   while (psg->realstep > psg->psgtime)
-  //   {
-  //     psg->psgtime += psg->psgstep;
-  //     update_output(psg);
-  //     psg->out += mix_output(psg);
-  //     psg->out >>= 1;
-  //   }
-  //   psg->psgtime -= psg->realstep;
-  // }
+  else
+  {
+    /* Simple rate converter (See README for detail). */
+    while (psg->realstep > psg->psgtime)
+    {
+      psg->psgtime += psg->psgstep;
+      update_output(psg);
+      psg->out += mix_output(psg);
+      psg->out >>= 1;
+    }
+    psg->psgtime -= psg->realstep;
+  }
   return psg->out;
 }
 

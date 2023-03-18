@@ -10,13 +10,13 @@ A YM2149 (aka PSG) emulator written in C.
 /* Typical YM2149 configuration */
 PSG *psg = PSG_new(3579545, 44100);
 PSG_setClockDivider(psg, 1);
-PSG_setVolumeMode(psg, 1); // YM style
-PSG_reset();
+PSG_setVolumeMode(psg, YM2149_PERFECT); // YM style
+PSG_reset(psg);
 
 /* Typical AY-3-8910 configuration */
 PSG *psg = PSG_new(3579545/2, 44100);
-PSG_setVolumeMode(psg, 2); // AY style
-PSG_reset();
+PSG_setVolumeMode(psg, AY8910_ZXTUNE); // AY style
+PSG_reset(psg);
 ```
 
 # Note for rate conversion
